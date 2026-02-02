@@ -12,6 +12,8 @@
     ttftMs,
     tps,
     totalTokens,
+    bashToolCallingEnabled,
+    toggleBashToolCalling,
   } from "$lib/stores/app.svelte";
   import ChatAttachments from "./ChatAttachments.svelte";
   import ImageParamsPanel from "./ImageParamsPanel.svelte";
@@ -49,6 +51,11 @@
   const currentTokens = $derived(totalTokens());
   const currentEditingImage = $derived(editingImage());
   const isEditMode = $derived(currentEditingImage !== null);
+  const bashEnabled = $derived(bashToolCallingEnabled());
+
+  // Filter state
+  let filterImage = $state(false);
+  let filterTool = $state(false);
 
   // Custom dropdown state
   let isModelDropdownOpen = $state(false);
@@ -127,6 +134,18 @@
           isImageModel: modelSupportsImageGeneration(modelId),
         });
       }
+    }
+    return models;
+  });
+
+  // Filtered models based on active filters
+  const filteredModels = $derived(() => {
+    let models = availableModels();
+    if (filterImage) {
+      models = models.filter((m) => m.isImageModel);
+    }
+    if (filterTool) {
+      models = models.filter((m) => !m.isImageModel);
     }
     return models;
   });
@@ -395,17 +414,18 @@
     {/if}
 
     <!-- Model selector (when enabled) -->
-    {#if showModelSelector && availableModels().length > 0}
+    {#if showModelSelector}
       <div
-        class="flex items-center justify-between gap-2 px-3 py-2 border-b border-exo-medium-gray/30"
+        class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-exo-medium-gray/30"
       >
+        {#if availableModels().length > 0}
         <div class="flex items-center gap-2 flex-1">
           <span
             class="text-xs text-exo-light-gray uppercase tracking-wider flex-shrink-0"
             >MODEL:</span
           >
           <!-- Custom dropdown -->
-          <div class="relative flex-1 max-w-xs">
+          <div class="relative flex-1 max-w-sm min-w-[160px]">
             <button
               bind:this={dropdownButtonRef}
               type="button"
@@ -415,9 +435,9 @@
                 : ''}"
             >
               {#if availableModels().find((m) => m.id === currentModel)}
-                <span class="text-exo-yellow truncate"
-                  >{availableModels().find((m) => m.id === currentModel)
-                    ?.label}</span
+                {@const selected = availableModels().find((m) => m.id === currentModel)}
+                <span class="text-exo-yellow truncate inline-flex items-center gap-1.5"
+                  >{selected?.label}{#if selected?.isImageModel}<span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none flex-shrink-0">IMG</span>{/if}{#if bashEnabled}<span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none flex-shrink-0">TOOL</span>{/if}</span
                 >
               {:else if availableModels().length > 0}
                 <span class="text-exo-yellow truncate"
@@ -462,10 +482,10 @@
               class="fixed bg-exo-dark-gray border border-exo-yellow/30 rounded shadow-lg shadow-black/50 z-[9999] max-h-48 overflow-y-auto"
               style="bottom: calc(100vh - {dropdownPosition()
                 .top}px + 4px); left: {dropdownPosition()
-                .left}px; width: {dropdownPosition().width}px;"
+                .left}px; min-width: max(280px, {dropdownPosition().width}px);"
             >
               <div class="py-1">
-                {#each availableModels() as model}
+                {#each filteredModels() as model}
                   <button
                     type="button"
                     onclick={() => {
@@ -514,12 +534,57 @@
                       </svg>
                     {/if}
                     <span class="truncate flex-1">{model.label}</span>
+                    {#if model.isImageModel}
+                      <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none flex-shrink-0">IMG</span>
+                    {/if}
+                    {#if bashEnabled && !model.isImageModel}
+                      <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none flex-shrink-0">TOOL</span>
+                    {/if}
                   </button>
                 {/each}
+                {#if filteredModels().length === 0}
+                  <div class="px-3 py-2 text-xs font-mono text-exo-light-gray/50 tracking-wide">
+                    No models match filter
+                  </div>
+                {/if}
               </div>
             </div>
           {/if}
         </div>
+        {/if}
+        <!-- Filter toggles -->
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onclick={() => { filterImage = !filterImage; if (filterImage) filterTool = false; }}
+            class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase transition-all duration-200 cursor-pointer border {filterImage
+              ? 'bg-exo-yellow/15 text-exo-yellow border-exo-yellow/40 hover:bg-exo-yellow/25'
+              : 'bg-transparent text-exo-light-gray/50 border-exo-medium-gray/30 hover:text-exo-light-gray hover:border-exo-medium-gray/50'}"
+            title={filterImage ? "Show all models" : "Filter to image models"}
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            IMAGE
+          </button>
+          <button
+            type="button"
+            onclick={() => { filterTool = !filterTool; if (filterTool) filterImage = false; toggleBashToolCalling(); }}
+            class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase transition-all duration-200 cursor-pointer border {bashEnabled
+              ? 'bg-exo-yellow/15 text-exo-yellow border-exo-yellow/40 hover:bg-exo-yellow/25'
+              : 'bg-transparent text-exo-light-gray/50 border-exo-medium-gray/30 hover:text-exo-light-gray hover:border-exo-medium-gray/50'}"
+            title={bashEnabled ? "Disable bash tool calling" : "Enable bash tool calling"}
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            TOOL
+          </button>
+        </div>
+
         <!-- Performance stats -->
         {#if currentTtft !== null || currentTps !== null}
           <div class="flex items-center gap-4 text-xs font-mono flex-shrink-0">

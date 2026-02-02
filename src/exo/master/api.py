@@ -67,6 +67,8 @@ from exo.shared.types.api import (
     StreamingChoiceResponse,
     StreamOptions,
     ToolCall,
+    ToolExecuteRequest,
+    ToolExecuteResponse,
     Usage,
 )
 from exo.shared.types.chunks import (
@@ -260,6 +262,7 @@ class API:
         self.app.post("/bench/images/edits")(self.bench_image_edits)
         self.app.get("/images")(self.list_images)
         self.app.get("/images/{image_id}")(self.get_image)
+        self.app.post("/v1/tools/execute")(self.execute_tool)
         self.app.get("/state")(lambda: self.state)
         self.app.get("/events")(lambda: self._event_log)
         self.app.post("/download/start")(self.start_download)
@@ -1208,6 +1211,53 @@ class API:
             num_images=n,
             response_format=response_format,
         )
+
+    async def execute_tool(self, payload: ToolExecuteRequest) -> ToolExecuteResponse:
+        """Execute a tool call (currently only bash is supported)."""
+        if payload.name != "bash":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported tool: {payload.name}",
+            )
+
+        try:
+            parsed: dict[str, str] = json.loads(payload.arguments)  # pyright: ignore[reportAny]
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON in arguments: {exc}",
+            ) from exc
+
+        command_str = parsed.get("command", "")
+        if not command_str:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing 'command' in arguments",
+            )
+
+        max_output_chars = 50_000
+
+        try:
+            result = await anyio.run_process(
+                ["bash", "-c", command_str],
+                check=False,
+            )
+            stdout = result.stdout.decode("utf-8", errors="replace")
+            stderr = result.stderr.decode("utf-8", errors="replace")
+            output = stdout + stderr
+            if len(output) > max_output_chars:
+                output = output[:max_output_chars] + "\n... (output truncated)"
+            return ToolExecuteResponse(
+                tool_call_id=payload.tool_call_id,
+                output=output,
+                exit_code=result.returncode,
+            )
+        except Exception as exc:
+            return ToolExecuteResponse(
+                tool_call_id=payload.tool_call_id,
+                output=f"Error executing command: {exc}",
+                exit_code=1,
+            )
 
     def _calculate_total_available_memory(self) -> Memory:
         """Calculate total available memory across all nodes in bytes."""

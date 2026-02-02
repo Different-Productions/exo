@@ -2557,14 +2557,26 @@
                           {/if}
                           <span class="truncate">{model.name || model.id}</span>
                         </span>
-                        <span
-                          class="flex-shrink-0 text-xs {modelCanFit
-                            ? 'text-white/50'
-                            : 'text-red-400/60'}"
-                        >
-                          {sizeGB >= 1
-                            ? sizeGB.toFixed(0)
-                            : sizeGB.toFixed(1)}GB
+                        <span class="flex items-center gap-1.5 flex-shrink-0">
+                          {#if isImageModel || isImageEditModel}
+                            <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none">IMG</span>
+                          {:else}
+                            <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">IMG</span>
+                          {/if}
+                          {#if !isImageModel && !isImageEditModel}
+                            <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none">TOOL</span>
+                          {:else}
+                            <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">TOOL</span>
+                          {/if}
+                          <span
+                            class="text-xs {modelCanFit
+                              ? 'text-white/50'
+                              : 'text-red-400/60'}"
+                          >
+                            {sizeGB >= 1
+                              ? sizeGB.toFixed(0)
+                              : sizeGB.toFixed(1)}GB
+                          </span>
                         </span>
                       </button>
                     {:else}

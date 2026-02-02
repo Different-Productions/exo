@@ -77,6 +77,10 @@
       alt="EXO"
       class="h-18 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)]"
     />
+    <span
+      class="ml-2 px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase text-exo-yellow border border-exo-yellow/50 rounded-full bg-exo-yellow/10"
+      >BETA</span
+    >
   </button>
 
   <!-- Right: Home + Downloads -->

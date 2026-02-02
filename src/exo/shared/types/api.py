@@ -362,6 +362,18 @@ class ImageListResponse(BaseModel, frozen=True):
     data: list[ImageListItem]
 
 
+class ToolExecuteRequest(BaseModel):
+    tool_call_id: str
+    name: Literal["bash"]
+    arguments: str  # JSON string: {"command": "..."}
+
+
+class ToolExecuteResponse(BaseModel):
+    tool_call_id: str
+    output: str
+    exit_code: int
+
+
 class StartDownloadParams(CamelCaseModel):
     target_node_id: NodeId
     shard_metadata: ShardMetadata

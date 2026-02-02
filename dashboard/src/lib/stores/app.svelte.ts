@@ -212,9 +212,22 @@ export interface MessageAttachment {
   mimeType?: string;
 }
 
+export interface ToolCallData {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface ToolResultData {
+  tool_call_id: string;
+  output: string;
+  exit_code: number;
+  is_executing?: boolean;
+}
+
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   timestamp: number;
   thinking?: string;
@@ -223,6 +236,8 @@ export interface Message {
   tps?: number; // Tokens per second (for assistant messages)
   requestType?: "chat" | "image-generation" | "image-editing";
   sourceImageDataUrl?: string; // For image editing regeneration
+  toolCalls?: ToolCallData[]; // Tool calls made by assistant
+  toolResult?: ToolResultData; // Result of a tool execution (for role=tool messages)
 }
 
 export interface Conversation {
@@ -416,6 +431,27 @@ function extractIpFromMultiaddr(ma?: string): string | undefined {
   return undefined;
 }
 
+const BASH_TOOL_DEFINITION = {
+  type: "function" as const,
+  function: {
+    name: "bash",
+    description:
+      "Execute a bash command on the server. Use this to run shell commands, inspect files, check system state, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: "The bash command to execute",
+        },
+      },
+      required: ["command"],
+    },
+  },
+};
+
+const MAX_TOOL_CALL_ITERATIONS = 15;
+
 class AppStore {
   // Conversation state
   conversations = $state<Conversation[]>([]);
@@ -426,6 +462,9 @@ class AppStore {
   messages = $state<Message[]>([]);
   currentResponse = $state("");
   isLoading = $state(false);
+
+  // Tool calling state
+  bashToolCallingEnabled = $state(false);
 
   // Performance metrics
   ttftMs = $state<number | null>(null); // Time to first token in ms
@@ -628,6 +667,46 @@ class AppStore {
 
   clearEditingImage() {
     this.editingImage = null;
+  }
+
+  toggleBashToolCalling() {
+    this.bashToolCallingEnabled = !this.bashToolCallingEnabled;
+  }
+
+  setBashToolCalling(enabled: boolean) {
+    this.bashToolCallingEnabled = enabled;
+  }
+
+  /**
+   * Execute a tool call via the backend API
+   */
+  private async executeToolCall(
+    toolCall: ToolCallData,
+  ): Promise<{ output: string; exit_code: number }> {
+    const response = await fetch("/v1/tools/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool_call_id: toolCall.id,
+        name: toolCall.name,
+        arguments: toolCall.arguments,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        output: `Error: ${response.status} - ${errorText}`,
+        exit_code: 1,
+      };
+    }
+
+    const result = (await response.json()) as {
+      tool_call_id: string;
+      output: string;
+      exit_code: number;
+    };
+    return { output: result.output, exit_code: result.exit_code };
   }
 
   /**
@@ -1038,8 +1117,9 @@ class AppStore {
    */
   private addMessageToConversation(
     conversationId: string,
-    role: "user" | "assistant",
+    role: "user" | "assistant" | "tool",
     content: string,
+    extra?: Partial<Message>,
   ): Message | null {
     const conversation = this.conversations.find(
       (c) => c.id === conversationId,
@@ -1051,6 +1131,7 @@ class AppStore {
       role,
       content,
       timestamp: Date.now(),
+      ...extra,
     };
     conversation.messages.push(message);
     return message;
@@ -1446,19 +1527,6 @@ class AppStore {
     this.syncActiveMessagesIfNeeded(targetConversationId);
 
     try {
-      const systemPrompt = {
-        role: "system" as const,
-        content:
-          "You are a helpful AI assistant. Respond directly and concisely. Do not show your reasoning or thought process.",
-      };
-
-      const apiMessages = [
-        systemPrompt,
-        ...targetConversation.messages.slice(0, -1).map((m) => {
-          return { role: m.role, content: m.content };
-        }),
-      ];
-
       // Determine which model to use
       const modelToUse = this.getModelForRequest();
       if (!modelToUse) {
@@ -1476,77 +1544,14 @@ class AppStore {
         return;
       }
 
-      const response = await fetch("/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: modelToUse,
-          messages: apiMessages,
-          stream: true,
-        }),
-      });
+      const requestStartTime = performance.now();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status} - ${errorText}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response stream available");
-      }
-
-      let streamedContent = "";
-
-      interface ChatCompletionChunk {
-        choices?: Array<{ delta?: { content?: string } }>;
-      }
-
-      await this.parseSSEStream<ChatCompletionChunk>(
-        reader,
+      await this.streamChatWithToolLoop(
         targetConversationId,
-        (parsed) => {
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            streamedContent += delta;
-            const { displayContent, thinkingContent } =
-              this.stripThinkingTags(streamedContent);
-
-            // Only update currentResponse if target conversation is active
-            if (this.activeConversationId === targetConversationId) {
-              this.currentResponse = displayContent;
-            }
-
-            // Update the assistant message in the target conversation
-            this.updateConversationMessage(
-              targetConversationId,
-              assistantMessage.id,
-              (msg) => {
-                msg.content = displayContent;
-                msg.thinking = thinkingContent || undefined;
-              },
-            );
-            this.syncActiveMessagesIfNeeded(targetConversationId);
-            this.persistConversation(targetConversationId);
-          }
-        },
+        modelToUse,
+        assistantMessage.id,
+        requestStartTime,
       );
-
-      // Final cleanup of the message (if conversation still exists)
-      if (this.conversationExists(targetConversationId)) {
-        const { displayContent, thinkingContent } =
-          this.stripThinkingTags(streamedContent);
-        this.updateConversationMessage(
-          targetConversationId,
-          assistantMessage.id,
-          (msg) => {
-            msg.content = displayContent;
-            msg.thinking = thinkingContent || undefined;
-          },
-        );
-        this.syncActiveMessagesIfNeeded(targetConversationId);
-        this.persistConversation(targetConversationId);
-      }
     } catch (error) {
       this.handleStreamingError(
         error,
@@ -1700,6 +1705,340 @@ class AppStore {
   }
 
   /**
+   * Build API messages from conversation messages, handling tool call messages properly.
+   */
+  private buildApiMessages(
+    conversationMessages: Message[],
+    includeToolContext: boolean,
+  ): Array<Record<string, unknown>> {
+    const systemContent = includeToolContext
+      ? "You are a helpful AI assistant with access to a bash tool. You can execute shell commands to help the user. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully."
+      : "You are a helpful AI assistant. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully.";
+
+    const systemPrompt = {
+      role: "system" as const,
+      content: systemContent,
+    };
+
+    const apiMessages: Array<Record<string, unknown>> = [systemPrompt];
+
+    for (const m of conversationMessages) {
+      if (m.role === "tool" && m.toolResult) {
+        apiMessages.push({
+          role: "tool",
+          tool_call_id: m.toolResult.tool_call_id,
+          content: m.toolResult.output,
+        });
+      } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+        apiMessages.push({
+          role: "assistant",
+          content: m.content || null,
+          tool_calls: m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: {
+              name: tc.name,
+              arguments: tc.arguments,
+            },
+          })),
+        });
+      } else {
+        // Build content including any text file attachments
+        let msgContent = m.content;
+        if (m.attachments) {
+          for (const attachment of m.attachments) {
+            if (attachment.type === "text" && attachment.content) {
+              msgContent += `\n\n[File: ${attachment.name}]\n\`\`\`\n${attachment.content}\n\`\`\``;
+            }
+          }
+        }
+        apiMessages.push({
+          role: m.role,
+          content: msgContent,
+        });
+      }
+    }
+
+    return apiMessages;
+  }
+
+  /**
+   * Stream a chat completion and handle tool calls in an agentic loop.
+   * Returns when the model produces a final text response or max iterations reached.
+   */
+  private async streamChatWithToolLoop(
+    targetConversationId: string,
+    modelToUse: string,
+    assistantMessageId: string,
+    requestStartTime: number,
+  ): Promise<void> {
+    let iteration = 0;
+    let currentAssistantMessageId = assistantMessageId;
+    let firstTokenTime: number | null = null;
+    let tokenCount = 0;
+
+    while (iteration < MAX_TOOL_CALL_ITERATIONS) {
+      iteration++;
+
+      if (!this.conversationExists(targetConversationId)) return;
+
+      const targetConversation = this.conversations.find(
+        (c) => c.id === targetConversationId,
+      );
+      if (!targetConversation) return;
+
+      // Build messages from conversation (exclude the current empty assistant placeholder)
+      const messagesForApi = targetConversation.messages.filter(
+        (m) => m.id !== currentAssistantMessageId,
+      );
+      const apiMessages = this.buildApiMessages(
+        messagesForApi,
+        this.bashToolCallingEnabled,
+      );
+
+      const requestBody: Record<string, unknown> = {
+        model: modelToUse,
+        messages: apiMessages,
+        temperature: 0.7,
+        stream: true,
+      };
+
+      if (this.bashToolCallingEnabled) {
+        requestBody.tools = [BASH_TOOL_DEFINITION];
+        requestBody.tool_choice = "auto";
+      }
+
+      const response = await fetch("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} - ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      let streamedContent = "";
+      let finishReason: string | null = null;
+      // Track tool call deltas by index
+      const toolCallAccumulator: Record<
+        number,
+        { id: string; name: string; arguments: string }
+      > = {};
+
+      interface ToolCallDelta {
+        index?: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }
+
+      interface ChatCompletionChunk {
+        choices?: Array<{
+          delta?: { content?: string; tool_calls?: ToolCallDelta[] };
+          finish_reason?: string | null;
+        }>;
+      }
+
+      await this.parseSSEStream<ChatCompletionChunk>(
+        reader,
+        targetConversationId,
+        (parsed) => {
+          const choice = parsed.choices?.[0];
+          if (!choice) return;
+
+          // Track finish reason
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+
+          // Handle text content
+          const tokenContent = choice.delta?.content;
+          if (tokenContent) {
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now();
+              this.ttftMs = firstTokenTime - requestStartTime;
+            }
+
+            tokenCount += 1;
+            this.totalTokens = tokenCount;
+
+            if (firstTokenTime !== null && tokenCount > 1) {
+              const elapsed = performance.now() - firstTokenTime;
+              this.tps = (tokenCount / elapsed) * 1000;
+            }
+
+            streamedContent += tokenContent;
+            const { displayContent, thinkingContent } =
+              this.stripThinkingTags(streamedContent);
+
+            if (this.activeConversationId === targetConversationId) {
+              this.currentResponse = displayContent;
+            }
+
+            this.updateConversationMessage(
+              targetConversationId,
+              currentAssistantMessageId,
+              (msg) => {
+                msg.content = displayContent;
+                msg.thinking = thinkingContent || undefined;
+              },
+            );
+            this.syncActiveMessagesIfNeeded(targetConversationId);
+            this.persistConversation(targetConversationId);
+          }
+
+          // Handle tool call deltas
+          const toolCallDeltas = choice.delta?.tool_calls;
+          if (toolCallDeltas) {
+            for (const delta of toolCallDeltas) {
+              const idx = delta.index ?? 0;
+              if (!toolCallAccumulator[idx]) {
+                toolCallAccumulator[idx] = {
+                  id: delta.id ?? "",
+                  name: delta.function?.name ?? "",
+                  arguments: "",
+                };
+              }
+              if (delta.id) {
+                toolCallAccumulator[idx].id = delta.id;
+              }
+              if (delta.function?.name) {
+                toolCallAccumulator[idx].name = delta.function.name;
+              }
+              if (delta.function?.arguments) {
+                toolCallAccumulator[idx].arguments +=
+                  delta.function.arguments;
+              }
+            }
+          }
+        },
+      );
+
+      // Calculate final TPS
+      if (firstTokenTime !== null && tokenCount > 1) {
+        const totalGenerationTime = performance.now() - firstTokenTime;
+        this.tps = (tokenCount / totalGenerationTime) * 1000;
+      }
+
+      // Check if model wants to call tools
+      const accumulatedToolCalls = Object.values(toolCallAccumulator);
+      if (
+        finishReason === "tool_calls" &&
+        accumulatedToolCalls.length > 0
+      ) {
+        // Store tool calls on the assistant message
+        const toolCalls: ToolCallData[] = accumulatedToolCalls.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        }));
+
+        const { displayContent, thinkingContent } =
+          this.stripThinkingTags(streamedContent);
+
+        this.updateConversationMessage(
+          targetConversationId,
+          currentAssistantMessageId,
+          (msg) => {
+            msg.content = displayContent;
+            msg.thinking = thinkingContent || undefined;
+            msg.toolCalls = toolCalls;
+          },
+        );
+        this.syncActiveMessagesIfNeeded(targetConversationId);
+
+        // Execute each tool call
+        for (const tc of toolCalls) {
+          // Add executing placeholder
+          const toolMessage = this.addMessageToConversation(
+            targetConversationId,
+            "tool",
+            "",
+            {
+              toolResult: {
+                tool_call_id: tc.id,
+                output: "",
+                exit_code: 0,
+                is_executing: true,
+              },
+            },
+          );
+          this.syncActiveMessagesIfNeeded(targetConversationId);
+
+          if (!toolMessage) continue;
+
+          // Execute the tool
+          const result = await this.executeToolCall(tc);
+
+          // Update tool message with result
+          this.updateConversationMessage(
+            targetConversationId,
+            toolMessage.id,
+            (msg) => {
+              msg.toolResult = {
+                tool_call_id: tc.id,
+                output: result.output,
+                exit_code: result.exit_code,
+                is_executing: false,
+              };
+              msg.content = result.output;
+            },
+          );
+          this.syncActiveMessagesIfNeeded(targetConversationId);
+          this.persistConversation(targetConversationId);
+        }
+
+        // Create a new assistant placeholder for the next iteration
+        const nextAssistantMessage = this.addMessageToConversation(
+          targetConversationId,
+          "assistant",
+          "",
+        );
+        if (!nextAssistantMessage) return;
+        currentAssistantMessageId = nextAssistantMessage.id;
+        this.syncActiveMessagesIfNeeded(targetConversationId);
+
+        // Reset streaming state for next iteration
+        this.currentResponse = "";
+
+        // Continue the loop
+        continue;
+      }
+
+      // No tool calls - finalize the message and exit the loop
+      if (this.conversationExists(targetConversationId)) {
+        const { displayContent, thinkingContent } =
+          this.stripThinkingTags(streamedContent);
+        this.updateConversationMessage(
+          targetConversationId,
+          currentAssistantMessageId,
+          (msg) => {
+            msg.content = displayContent;
+            msg.thinking = thinkingContent || undefined;
+            if (this.ttftMs !== null) {
+              msg.ttftMs = this.ttftMs;
+            }
+            if (this.tps !== null) {
+              msg.tps = this.tps;
+            }
+          },
+        );
+        this.syncActiveMessagesIfNeeded(targetConversationId);
+        this.persistConversation(targetConversationId);
+      }
+
+      // Exit the loop - we got a normal text response
+      break;
+    }
+  }
+
+  /**
    * Get the model to use for a request.
    * Prefers the provided modelId, then selectedChatModel, then falls back to the first running instance.
    *
@@ -1828,36 +2167,6 @@ class AppStore {
     this.saveConversationsToStorage();
 
     try {
-      // Build the messages array for the API with system prompt
-      const systemPrompt = {
-        role: "system" as const,
-        content:
-          "You are a helpful AI assistant. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully.",
-      };
-
-      // Build API messages from the target conversation - include file content for text files
-      const apiMessages = [
-        systemPrompt,
-        ...targetConversation.messages.slice(0, -1).map((m) => {
-          // Build content including any text file attachments
-          let msgContent = m.content;
-
-          // Add text attachments as context
-          if (m.attachments) {
-            for (const attachment of m.attachments) {
-              if (attachment.type === "text" && attachment.content) {
-                msgContent += `\n\n[File: ${attachment.name}]\n\`\`\`\n${attachment.content}\n\`\`\``;
-              }
-            }
-          }
-
-          return {
-            role: m.role,
-            content: msgContent,
-          };
-        }),
-      ];
-
       // Determine the model to use
       const modelToUse = this.getModelForRequest();
       if (!modelToUse) {
@@ -1871,114 +2180,14 @@ class AppStore {
 
       // Start timing for TTFT measurement
       const requestStartTime = performance.now();
-      let firstTokenTime: number | null = null;
-      let tokenCount = 0;
 
-      const response = await fetch("/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          messages: apiMessages,
-          temperature: 0.7,
-          stream: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} - ${errorText}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      let streamedContent = "";
-
-      interface ChatCompletionChunk {
-        choices?: Array<{ delta?: { content?: string } }>;
-      }
-
-      await this.parseSSEStream<ChatCompletionChunk>(
-        reader,
+      // Use the agentic tool loop (handles both tool-calling and non-tool-calling paths)
+      await this.streamChatWithToolLoop(
         targetConversationId,
-        (parsed) => {
-          const tokenContent = parsed.choices?.[0]?.delta?.content;
-          if (tokenContent) {
-            // Track first token for TTFT
-            if (firstTokenTime === null) {
-              firstTokenTime = performance.now();
-              this.ttftMs = firstTokenTime - requestStartTime;
-            }
-
-            // Count tokens (each SSE chunk is typically one token)
-            tokenCount += 1;
-            this.totalTokens = tokenCount;
-
-            // Update real-time TPS during streaming
-            if (firstTokenTime !== null && tokenCount > 1) {
-              const elapsed = performance.now() - firstTokenTime;
-              this.tps = (tokenCount / elapsed) * 1000;
-            }
-
-            streamedContent += tokenContent;
-
-            // Strip thinking tags for display and extract thinking content
-            const { displayContent, thinkingContent } =
-              this.stripThinkingTags(streamedContent);
-
-            // Only update currentResponse if target conversation is active
-            if (this.activeConversationId === targetConversationId) {
-              this.currentResponse = displayContent;
-            }
-
-            // Update the assistant message in the target conversation
-            this.updateConversationMessage(
-              targetConversationId,
-              assistantMessage.id,
-              (msg) => {
-                msg.content = displayContent;
-                msg.thinking = thinkingContent || undefined;
-              },
-            );
-            this.syncActiveMessagesIfNeeded(targetConversationId);
-            this.persistConversation(targetConversationId);
-          }
-        },
+        modelToUse,
+        assistantMessage.id,
+        requestStartTime,
       );
-
-      // Calculate final TPS
-      if (firstTokenTime !== null && tokenCount > 1) {
-        const totalGenerationTime = performance.now() - firstTokenTime;
-        this.tps = (tokenCount / totalGenerationTime) * 1000; // tokens per second
-      }
-
-      // Final cleanup of the message (if conversation still exists)
-      if (this.conversationExists(targetConversationId)) {
-        const { displayContent, thinkingContent } =
-          this.stripThinkingTags(streamedContent);
-        this.updateConversationMessage(
-          targetConversationId,
-          assistantMessage.id,
-          (msg) => {
-            msg.content = displayContent;
-            msg.thinking = thinkingContent || undefined;
-            // Store performance metrics on the message
-            if (this.ttftMs !== null) {
-              msg.ttftMs = this.ttftMs;
-            }
-            if (this.tps !== null) {
-              msg.tps = this.tps;
-            }
-          },
-        );
-        this.syncActiveMessagesIfNeeded(targetConversationId);
-        this.persistConversation(targetConversationId);
-      }
     } catch (error) {
       console.error("Error sending message:", error);
       this.handleStreamingError(
@@ -2660,6 +2869,12 @@ export const setImageGenerationParams = (
 ) => appStore.setImageGenerationParams(params);
 export const resetImageGenerationParams = () =>
   appStore.resetImageGenerationParams();
+
+// Tool calling
+export const bashToolCallingEnabled = () => appStore.bashToolCallingEnabled;
+export const toggleBashToolCalling = () => appStore.toggleBashToolCalling();
+export const setBashToolCalling = (enabled: boolean) =>
+  appStore.setBashToolCalling(enabled);
 
 // Download actions
 export const startDownload = (nodeId: string, shardMetadata: object) =>

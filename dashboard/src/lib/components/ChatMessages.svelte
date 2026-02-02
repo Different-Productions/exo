@@ -12,6 +12,32 @@
   import type { MessageAttachment } from "$lib/stores/app.svelte";
   import MarkdownContent from "./MarkdownContent.svelte";
 
+  // Tool output collapsed state
+  let expandedToolOutputIds = $state<Set<string>>(new Set());
+
+  function toggleToolOutput(messageId: string) {
+    const next = new Set(expandedToolOutputIds);
+    if (next.has(messageId)) {
+      next.delete(messageId);
+    } else {
+      next.add(messageId);
+    }
+    expandedToolOutputIds = next;
+  }
+
+  function isToolOutputExpanded(messageId: string): boolean {
+    return expandedToolOutputIds.has(messageId);
+  }
+
+  function extractBashCommand(args: string): string {
+    try {
+      const parsed = JSON.parse(args) as { command?: string };
+      return parsed.command ?? args;
+    } catch {
+      return args;
+    }
+  }
+
   interface Props {
     class?: string;
     scrollParent?: HTMLElement | null;
@@ -233,6 +259,48 @@
 
 <div class="flex flex-col gap-4 sm:gap-6 {className}">
   {#each messageList as message (message.id)}
+    {#if message.role === "tool"}
+      <!-- Tool result message -->
+      <div class="group flex justify-start">
+        <div class="w-full max-w-[98%] sm:max-w-[95%]">
+          <div class="rounded border border-exo-medium-gray/30 bg-exo-black/30 overflow-hidden">
+            {#if message.toolResult?.is_executing}
+              <div class="flex items-center gap-2 px-3 py-2">
+                <div class="w-3 h-3 border-2 border-exo-yellow/30 border-t-exo-yellow rounded-full animate-spin"></div>
+                <span class="text-[10px] font-mono tracking-[0.2em] text-exo-yellow/70 uppercase">EXECUTING...</span>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="w-full flex items-center justify-between px-3 py-2 text-xs font-mono cursor-pointer hover:bg-exo-medium-gray/10 transition-colors"
+                onclick={() => toggleToolOutput(message.id)}
+                aria-expanded={isToolOutputExpanded(message.id)}
+              >
+                <span class="flex items-center gap-2">
+                  <svg
+                    class={`w-3 h-3 text-exo-light-gray/60 transition-transform duration-200 ${isToolOutputExpanded(message.id) ? "rotate-90" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span class="tracking-[0.15em] uppercase {message.toolResult?.exit_code === 0 ? 'text-green-400/80' : 'text-red-400/80'}">
+                    {message.toolResult?.exit_code === 0 ? "OUTPUT" : "ERROR"} (exit {message.toolResult?.exit_code ?? "?"})
+                  </span>
+                </span>
+                <span class="text-[10px] tracking-[0.2em] text-exo-light-gray/40">
+                  {isToolOutputExpanded(message.id) ? "HIDE" : "SHOW"}
+                </span>
+              </button>
+              {#if isToolOutputExpanded(message.id)}
+                <div class="px-3 pb-3 max-h-64 overflow-y-auto">
+                  <pre class="text-xs font-mono text-exo-light-gray/90 whitespace-pre-wrap break-words leading-relaxed">{message.toolResult?.output || "(no output)"}</pre>
+                </div>
+              {/if}
+            {/if}
+          </div>
+        </div>
+      </div>
+    {:else}
     <div
       class="group flex {message.role === 'user'
         ? 'justify-end'
@@ -558,6 +626,26 @@
                     {/if}
                   {/if}
                 </div>
+
+                <!-- Tool calls made by this assistant message -->
+                {#if message.toolCalls && message.toolCalls.length > 0}
+                  <div class="mt-3 space-y-2">
+                    {#each message.toolCalls as toolCall}
+                      <div class="rounded border border-exo-yellow/20 bg-exo-black/40 overflow-hidden">
+                        <div class="flex items-center gap-2 px-3 py-2 bg-exo-yellow/5 border-b border-exo-yellow/10">
+                          <svg class="w-3.5 h-3.5 text-exo-yellow/70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 17 10 11 4 5" />
+                            <line x1="12" y1="19" x2="20" y2="19" />
+                          </svg>
+                          <span class="text-[10px] font-mono tracking-[0.2em] text-exo-yellow/80 uppercase">BASH</span>
+                        </div>
+                        <div class="px-3 py-2">
+                          <code class="text-xs font-mono text-exo-light-gray break-all whitespace-pre-wrap">{extractBashCommand(toolCall.arguments)}</code>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -676,6 +764,7 @@
         {/if}
       </div>
     </div>
+    {/if}
   {/each}
 
   {#if messageList.length === 0}
