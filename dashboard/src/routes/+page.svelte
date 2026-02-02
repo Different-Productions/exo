@@ -1934,7 +1934,7 @@
 
         <!-- Right Sidebar: Instance Controls (wider on welcome page for better visibility) -->
         <aside
-          class="w-80 border-l border-exo-yellow/10 bg-exo-dark-gray flex flex-col flex-shrink-0"
+          class="w-96 border-l border-exo-yellow/10 bg-exo-dark-gray flex flex-col flex-shrink-0"
         >
           <!-- Running Instances Panel (only shown when instances exist) - Scrollable -->
           {#if instanceCount > 0}
@@ -2546,6 +2546,35 @@
                             : 'text-white/30 cursor-default'}"
                       >
                         <span class="flex items-center gap-2 truncate flex-1">
+                          {#if downloaded}
+                            <svg
+                              class="w-3.5 h-3.5 flex-shrink-0 text-green-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                              aria-label="Downloaded"
+                            >
+                              <path d="M12 3v12" />
+                              <path d="M7 12l5 5 5-5" />
+                              <path d="M5 21h14" />
+                            </svg>
+                          {:else if downloading.isDownloading}
+                            <svg
+                              class="w-3.5 h-3.5 flex-shrink-0 text-exo-yellow animate-pulse"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                              aria-label="Downloading"
+                            >
+                              <path d="M12 3v12" />
+                              <path d="M7 12l5 5 5-5" />
+                              <path d="M5 21h14" />
+                            </svg>
+                          {:else}
+                            <span class="w-3.5 flex-shrink-0"></span>
+                          {/if}
                           {#if isImageModel}
                             <svg
                               class="w-4 h-4 flex-shrink-0 text-exo-yellow"
@@ -2596,33 +2625,6 @@
                             <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none">TOOL</span>
                           {:else}
                             <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">TOOL</span>
-                          {/if}
-                          {#if downloaded}
-                            <svg
-                              class="w-3.5 h-3.5 flex-shrink-0 text-green-400"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              aria-label="Downloaded"
-                            >
-                              <path d="M12 3v12" />
-                              <path d="M7 12l5 5 5-5" />
-                              <path d="M5 21h14" />
-                            </svg>
-                          {:else if downloading.isDownloading}
-                            <svg
-                              class="w-3.5 h-3.5 flex-shrink-0 text-exo-yellow animate-pulse"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              aria-label="Downloading"
-                            >
-                              <path d="M12 3v12" />
-                              <path d="M7 12l5 5 5-5" />
-                              <path d="M5 21h14" />
-                            </svg>
                           {/if}
                           <span
                             class="text-xs {modelCanFit
@@ -2917,7 +2919,7 @@
         <!-- Right: Mini-Map Sidebar -->
         {#if minimized}
           <aside
-            class="w-80 border-l border-exo-yellow/20 bg-exo-dark-gray flex flex-col flex-shrink-0 overflow-y-auto"
+            class="w-96 border-l border-exo-yellow/20 bg-exo-dark-gray flex flex-col flex-shrink-0 overflow-y-auto"
             in:fly={{ x: 100, duration: 400, easing: cubicInOut }}
           >
             <!-- Topology Section - clickable to go back to main view -->
