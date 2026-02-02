@@ -771,6 +771,33 @@
     };
   }
 
+  function isModelDownloaded(modelId: string): boolean {
+    if (!downloadsData || Object.keys(downloadsData).length === 0) return false;
+    for (const [, nodeDownloads] of Object.entries(downloadsData)) {
+      if (!Array.isArray(nodeDownloads)) continue;
+      for (const downloadWrapped of nodeDownloads) {
+        if (!downloadWrapped || typeof downloadWrapped !== "object") continue;
+        const keys = Object.keys(downloadWrapped as Record<string, unknown>);
+        if (keys.length !== 1) continue;
+        const downloadKind = keys[0];
+        if (downloadKind !== "DownloadCompleted") continue;
+        const downloadPayload = (downloadWrapped as Record<string, unknown>)[
+          downloadKind
+        ] as Record<string, unknown>;
+        if (!downloadPayload) continue;
+        const downloadModelId = extractModelIdFromDownload(downloadPayload);
+        if (!downloadModelId) continue;
+        if (
+          downloadModelId === modelId ||
+          downloadModelId.includes(modelId.split("/").pop() || modelId)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // Debug: Log downloads data when it changes
   $effect(() => {
     if (downloadsData && Object.keys(downloadsData).length > 0) {
@@ -2498,6 +2525,8 @@
                       {@const isImageEditModel = modelSupportsImageEditing(
                         model.id,
                       )}
+                      {@const downloaded = isModelDownloaded(model.id)}
+                      {@const downloading = getModelDownloadStatus(model.id)}
                       <button
                         type="button"
                         onclick={() => {
@@ -2567,6 +2596,33 @@
                             <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none">TOOL</span>
                           {:else}
                             <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">TOOL</span>
+                          {/if}
+                          {#if downloaded}
+                            <svg
+                              class="w-3.5 h-3.5 flex-shrink-0 text-green-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              aria-label="Downloaded"
+                            >
+                              <path d="M12 3v12" />
+                              <path d="M7 12l5 5 5-5" />
+                              <path d="M5 21h14" />
+                            </svg>
+                          {:else if downloading.isDownloading}
+                            <svg
+                              class="w-3.5 h-3.5 flex-shrink-0 text-exo-yellow animate-pulse"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              aria-label="Downloading"
+                            >
+                              <path d="M12 3v12" />
+                              <path d="M7 12l5 5 5-5" />
+                              <path d="M5 21h14" />
+                            </svg>
                           {/if}
                           <span
                             class="text-xs {modelCanFit
