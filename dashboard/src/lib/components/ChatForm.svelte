@@ -15,8 +15,11 @@
     bashToolCallingEnabled,
     toggleBashToolCalling,
     setBashToolCalling,
+    projectDirectory,
+    setProjectDirectory,
   } from "$lib/stores/app.svelte";
   import ChatAttachments from "./ChatAttachments.svelte";
+  import FolderBrowser from "./FolderBrowser.svelte";
   import ImageParamsPanel from "./ImageParamsPanel.svelte";
   import type { ChatUploadedFile } from "$lib/types/files";
   import { processUploadedFiles, getAcceptString } from "$lib/types/files";
@@ -53,6 +56,30 @@
   const currentEditingImage = $derived(editingImage());
   const isEditMode = $derived(currentEditingImage !== null);
   const bashEnabled = $derived(bashToolCallingEnabled());
+  const currentProjectDir = $derived(projectDirectory());
+
+  // Folder browser modal state
+  let showFolderPicker = $state(false);
+  let showFileBrowser = $state(false);
+
+  function handleFolderSelect(path: string) {
+    setProjectDirectory(path);
+    showFolderPicker = false;
+  }
+
+  function handleFileSelect(path: string, content?: string) {
+    if (!content) return;
+    const name = path.split("/").pop() || path;
+    // Add as an uploaded file with text content and resolved path
+    uploadedFiles.push({
+      id: crypto.randomUUID(),
+      name,
+      type: "text/plain",
+      textContent: content,
+      resolvedPath: path,
+    });
+    showFileBrowser = false;
+  }
 
   // Filter state
   let filterImage = $state(false);
@@ -623,6 +650,55 @@
       </div>
     {/if}
 
+    <!-- Project directory (shown when tool calling is enabled) -->
+    {#if bashEnabled}
+      <div class="flex items-center gap-2 px-3 py-1.5 border-b border-exo-medium-gray/30">
+        <button
+          type="button"
+          onclick={() => (showFolderPicker = true)}
+          class="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase transition-all duration-200 cursor-pointer border {currentProjectDir
+            ? 'bg-exo-yellow/15 text-exo-yellow border-exo-yellow/40 hover:bg-exo-yellow/25'
+            : 'bg-transparent text-exo-light-gray/50 border-exo-medium-gray/30 hover:text-exo-light-gray hover:border-exo-medium-gray/50'}"
+          title={currentProjectDir || "Set project folder"}
+        >
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          {#if currentProjectDir}
+            {currentProjectDir.split("/").pop()}
+          {:else}
+            SET FOLDER
+          {/if}
+        </button>
+        {#if currentProjectDir}
+          <span class="text-[10px] font-mono text-exo-light-gray/40 truncate flex-1" title={currentProjectDir}>
+            {currentProjectDir}
+          </span>
+          <button
+            type="button"
+            onclick={() => (showFileBrowser = true)}
+            class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase transition-all duration-200 cursor-pointer border bg-transparent text-exo-light-gray/50 border-exo-medium-gray/30 hover:text-exo-yellow hover:border-exo-yellow/40"
+            title="Browse project files"
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            FILES
+          </button>
+          <button
+            type="button"
+            onclick={() => setProjectDirectory("")}
+            class="text-exo-light-gray/50 hover:text-exo-yellow transition-colors cursor-pointer flex-shrink-0"
+            title="Clear project directory"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Image params panel (shown for image models or edit mode) -->
     {#if showModelSelector && (isImageModel() || isEditMode)}
       <ImageParamsPanel {isEditMode} />
@@ -792,3 +868,23 @@
     </p>
   {/if}
 </form>
+
+<!-- Folder picker modal -->
+{#if showFolderPicker}
+  <FolderBrowser
+    mode="directory"
+    initialPath={currentProjectDir || "~"}
+    onSelect={handleFolderSelect}
+    onClose={() => (showFolderPicker = false)}
+  />
+{/if}
+
+<!-- Project file browser modal -->
+{#if showFileBrowser && currentProjectDir}
+  <FolderBrowser
+    mode="file"
+    initialPath={currentProjectDir}
+    onSelect={handleFileSelect}
+    onClose={() => (showFileBrowser = false)}
+  />
+{/if}

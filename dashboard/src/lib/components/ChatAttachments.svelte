@@ -61,7 +61,7 @@
             {truncateName(file.name)}
           </span>
           <span class="text-exo-light-gray text-xs">
-            {formatFileSize(file.size)}
+            {file.resolvedPath ? file.resolvedPath.split("/").slice(-2).join("/") : file.size != null ? formatFileSize(file.size) : ""}
           </span>
         </div>
 

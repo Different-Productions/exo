@@ -210,6 +210,7 @@ export interface MessageAttachment {
   content?: string;
   preview?: string;
   mimeType?: string;
+  resolvedPath?: string;
 }
 
 export interface ToolCallData {
@@ -465,6 +466,8 @@ class AppStore {
 
   // Tool calling state
   bashToolCallingEnabled = $state(false);
+  toolCwd = $state<string | null>(null);
+  projectDirectory = $state<string>("");
 
   // Performance metrics
   ttftMs = $state<number | null>(null); // Time to first token in ms
@@ -517,6 +520,20 @@ class AppStore {
       this.loadTopologyOnlyModeFromStorage();
       this.loadChatSidebarVisibleFromStorage();
       this.loadImageGenerationParamsFromStorage();
+      this.loadProjectDirectoryFromStorage();
+      this.fetchToolCwd();
+    }
+  }
+
+  private async fetchToolCwd() {
+    try {
+      const res = await fetch("/v1/tools/cwd");
+      if (res.ok) {
+        const data = (await res.json()) as { cwd: string };
+        this.toolCwd = data.cwd;
+      }
+    } catch {
+      // Server not ready yet — will retry on next poll if needed
     }
   }
 
@@ -669,6 +686,30 @@ class AppStore {
     this.editingImage = null;
   }
 
+  private loadProjectDirectoryFromStorage() {
+    try {
+      const stored = localStorage.getItem("exo-project-directory");
+      if (stored) {
+        this.projectDirectory = stored;
+      }
+    } catch (error) {
+      console.error("Failed to load project directory:", error);
+    }
+  }
+
+  private saveProjectDirectoryToStorage() {
+    try {
+      localStorage.setItem("exo-project-directory", this.projectDirectory);
+    } catch (error) {
+      console.error("Failed to save project directory:", error);
+    }
+  }
+
+  setProjectDirectory(dir: string) {
+    this.projectDirectory = dir;
+    this.saveProjectDirectoryToStorage();
+  }
+
   toggleBashToolCalling() {
     this.bashToolCallingEnabled = !this.bashToolCallingEnabled;
   }
@@ -683,14 +724,18 @@ class AppStore {
   private async executeToolCall(
     toolCall: ToolCallData,
   ): Promise<{ output: string; exit_code: number }> {
+    const payload: Record<string, string> = {
+      tool_call_id: toolCall.id,
+      name: toolCall.name,
+      arguments: toolCall.arguments,
+    };
+    if (this.projectDirectory) {
+      payload.cwd = this.projectDirectory;
+    }
     const response = await fetch("/v1/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tool_call_id: toolCall.id,
-        name: toolCall.name,
-        arguments: toolCall.arguments,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -1711,8 +1756,20 @@ class AppStore {
     conversationMessages: Message[],
     includeToolContext: boolean,
   ): Array<Record<string, unknown>> {
+    const effectiveCwd = this.projectDirectory || this.toolCwd;
+    const cwdInfo = effectiveCwd ? `\nWORKING DIRECTORY: ${effectiveCwd}` : "";
     const systemContent = includeToolContext
-      ? "You are a helpful AI assistant with access to a bash tool. You can execute shell commands to help the user. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully. The system is macOS. Use macOS-compatible commands (e.g. `sed -i ''` not `sed -i`)."
+      ? `You are a helpful AI assistant with access to a bash tool. Respond directly and concisely. Do not show your reasoning or thought process.
+
+ENVIRONMENT: macOS (BSD userland).${cwdInfo}
+All commands execute in the working directory above. Use git to track your changes.
+
+RULES:
+- Always use the bash tool to execute commands. Never describe commands in text.
+- Do NOT use sed for file edits. BSD sed breaks on multi-line content and special characters. Instead, write the entire file using cat <<'EOF' > filepath.
+- If a command fails, try a completely different approach. Do not retry the same method.
+- When files are shared with you, always use the ABSOLUTE paths provided in [File: ...] headers. Never guess or shorten paths.
+- When files are shared with you, analyze them and respond helpfully.`
       : "You are a helpful AI assistant. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully.";
 
     const systemPrompt = {
@@ -1748,7 +1805,8 @@ class AppStore {
         if (m.attachments) {
           for (const attachment of m.attachments) {
             if (attachment.type === "text" && attachment.content) {
-              msgContent += `\n\n[File: ${attachment.name}]\n\`\`\`\n${attachment.content}\n\`\`\``;
+              const pathLabel = attachment.resolvedPath ?? attachment.name;
+              msgContent += `\n\n[File: ${pathLabel}]\n\`\`\`\n${attachment.content}\n\`\`\``;
             }
           }
         }
@@ -2077,6 +2135,7 @@ class AppStore {
       type: string;
       textContent?: string;
       preview?: string;
+      resolvedPath?: string;
     }[],
   ): Promise<void> {
     if ((!content.trim() && (!files || files.length === 0)) || this.isLoading)
@@ -2112,14 +2171,33 @@ class AppStore {
             mimeType: file.type,
           });
         } else if (file.textContent) {
+          // Use pre-resolved path (from project file browser) or resolve via server
+          let resolvedPath: string | undefined = file.resolvedPath;
+          if (!resolvedPath) {
+            try {
+              const params = new URLSearchParams({ filename: file.name });
+              if (this.projectDirectory) {
+                params.set("search_dir", this.projectDirectory);
+              }
+              const res = await fetch(`/v1/files/resolve?${params.toString()}`);
+              if (res.ok) {
+                const data = (await res.json()) as { path: string | null };
+                if (data.path) resolvedPath = data.path;
+              }
+            } catch {
+              // Server not available — skip path resolution
+            }
+          }
+
           attachments.push({
             type: "text",
             name: file.name,
             content: file.textContent,
             mimeType: file.type,
+            resolvedPath,
           });
-          // Add text file content to the message context
-          fileContext += `\n\n[File: ${file.name}]\n\`\`\`\n${file.textContent}\n\`\`\``;
+          const pathLabel = resolvedPath ?? file.name;
+          fileContext += `\n\n[File: ${pathLabel}]\n\`\`\`\n${file.textContent}\n\`\`\``;
         } else {
           attachments.push({
             type: "file",
@@ -2875,6 +2953,9 @@ export const bashToolCallingEnabled = () => appStore.bashToolCallingEnabled;
 export const toggleBashToolCalling = () => appStore.toggleBashToolCalling();
 export const setBashToolCalling = (enabled: boolean) =>
   appStore.setBashToolCalling(enabled);
+export const projectDirectory = () => appStore.projectDirectory;
+export const setProjectDirectory = (dir: string) =>
+  appStore.setProjectDirectory(dir);
 
 // Download actions
 export const startDownload = (nodeId: string, shardMetadata: object) =>

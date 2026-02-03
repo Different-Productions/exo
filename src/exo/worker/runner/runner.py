@@ -684,6 +684,7 @@ def parse_tool_calls(
 ) -> Generator[GenerationResponse | ToolCallResponse]:
     in_tool_call = False
     tool_call_text_parts: list[str] = []
+    lenient_decoder = json.JSONDecoder(strict=False)
     for response in responses:
         assert isinstance(response, GenerationResponse)
         # assumption: the tool call start is one token
@@ -692,12 +693,13 @@ def parse_tool_calls(
             continue
         # assumption: the tool call end is one token
         if in_tool_call and response.text == tool_call_end:
+            raw_text = "".join(tool_call_text_parts).strip()
             try:
                 # tool_parser returns an arbitrarily nested python dictionary
                 # we actually don't want the python dictionary, we just want to
                 # parse the top level { function: ..., arguments: ... } structure
                 # as we're just gonna hand it back to the api anyway
-                parsed = tool_parser("".join(tool_call_text_parts).strip())
+                parsed = tool_parser(raw_text)
                 logger.info(f"parsed {tool_call_text_parts=} into {parsed=}")
                 if isinstance(parsed, list):
                     tools = [_validate_single_tool(tool) for tool in parsed]
@@ -711,14 +713,24 @@ def parse_tool_calls(
                 ValueError,
                 AttributeError,
             ) as e:
-                # ValueError: our parsers raise this for malformed tool calls
-                # AttributeError: upstream parsers (e.g. glm47) may raise this when regex doesn't match
-                logger.opt(exception=e).warning("tool call parsing failed")
-                # assumption: talking about tool calls, not making a tool call
-                response.text = (
-                    tool_call_start + "".join(tool_call_text_parts) + tool_call_end
-                )
-                yield response
+                # Models often emit multi-line content (heredocs, code) with
+                # literal newlines inside JSON string values.  The strict
+                # json.loads rejects these control characters.  Retry with a
+                # lenient decoder before giving up.
+                logger.opt(exception=e).warning("tool call parsing failed, trying lenient decode")
+                try:
+                    lenient_parsed: dict[str, Any] = lenient_decoder.decode(raw_text)  # pyright: ignore[reportAny]
+                    if isinstance(lenient_parsed, list):
+                        tools = [_validate_single_tool(tool) for tool in lenient_parsed]  # pyright: ignore[reportUnknownVariableType]
+                    else:
+                        tools = [_validate_single_tool(lenient_parsed)]
+                    yield ToolCallResponse(tool_calls=tools, usage=response.usage)
+                except Exception:
+                    logger.warning("lenient decode also failed, yielding raw text")
+                    response.text = (
+                        tool_call_start + raw_text + tool_call_end
+                    )
+                    yield response
 
             in_tool_call = False
             tool_call_text_parts = []

@@ -5,11 +5,12 @@
 export interface ChatUploadedFile {
   id: string;
   name: string;
-  size: number;
+  size?: number;
   type: string;
-  file: File;
+  file?: File;
   preview?: string;
   textContent?: string;
+  resolvedPath?: string;
 }
 
 export interface ChatAttachment {

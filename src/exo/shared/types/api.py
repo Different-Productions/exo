@@ -366,6 +366,7 @@ class ToolExecuteRequest(BaseModel):
     tool_call_id: str
     name: Literal["bash"]
     arguments: str  # JSON string: {"command": "..."}
+    cwd: str | None = None  # Optional working directory override from the frontend
 
 
 class ToolExecuteResponse(BaseModel):

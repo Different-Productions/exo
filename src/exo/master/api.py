@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import AsyncGenerator
 from http import HTTPStatus
+from pathlib import Path
 from typing import Annotated, Literal, cast
 from uuid import uuid4
 
@@ -263,6 +264,10 @@ class API:
         self.app.get("/images")(self.list_images)
         self.app.get("/images/{image_id}")(self.get_image)
         self.app.post("/v1/tools/execute")(self.execute_tool)
+        self.app.get("/v1/tools/cwd")(self.get_tool_cwd)
+        self.app.get("/v1/files/resolve")(self.resolve_file_path)
+        self.app.get("/v1/files/browse")(self.browse_files)
+        self.app.get("/v1/files/read-file")(self.read_project_file)
         self.app.get("/state")(lambda: self.state)
         self.app.get("/events")(lambda: self._event_log)
         self.app.post("/download/start")(self.start_download)
@@ -1212,6 +1217,85 @@ class API:
             response_format=response_format,
         )
 
+    async def get_tool_cwd(self) -> dict[str, str]:
+        """Return the working directory used for tool execution."""
+        return {"cwd": str(Path.cwd())}
+
+    async def resolve_file_path(self, filename: str, search_dir: str | None = None) -> dict[str, str | None]:
+        """Search the given directory (or cwd) for a file by name and return its full path."""
+        base = Path(search_dir) if search_dir else Path.cwd()
+        if not base.is_dir():
+            return {"path": None}
+        matches: list[Path] = []
+        for match in base.rglob(filename):
+            # Skip hidden dirs and common junk
+            parts = match.relative_to(base).parts
+            if any(p.startswith(".") or p in ("node_modules", "__pycache__", ".venv", "venv") for p in parts):
+                continue
+            matches.append(match)
+            if len(matches) >= 5:
+                break
+        if len(matches) == 1:
+            return {"path": str(matches[0])}
+        if len(matches) > 1:
+            # Return the shallowest match
+            matches.sort(key=lambda p: len(p.parts))
+            return {"path": str(matches[0])}
+        return {"path": None}
+
+    async def browse_files(self, path: str = "~", mode: str = "all") -> dict[str, object]:
+        """Browse the local filesystem for folder/file selection.
+
+        ``mode`` controls which entries are returned:
+        - ``"directory"`` – only directories
+        - ``"file"``      – only files
+        - ``"all"``       – both (default)
+        """
+        resolved = Path(path).expanduser().resolve()
+        if not resolved.is_dir():
+            return {"entries": [], "current": str(resolved), "parent": None, "error": "Not a directory"}
+
+        skip_names = frozenset(("node_modules", "__pycache__", ".venv", "venv", ".git", ".svn", "build", "dist"))
+        entries: list[dict[str, str]] = []
+        try:
+            for item in sorted(resolved.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+                if item.name.startswith("."):
+                    continue
+                if item.name in skip_names:
+                    continue
+                is_dir = item.is_dir()
+                if mode == "directory" and not is_dir:
+                    continue
+                if mode == "file" and is_dir:
+                    continue
+                entries.append({
+                    "name": item.name,
+                    "type": "dir" if is_dir else "file",
+                    "path": str(item),
+                })
+        except PermissionError:
+            pass
+
+        parent = str(resolved.parent) if resolved.parent != resolved else None
+        return {"entries": entries, "current": str(resolved), "parent": parent}
+
+    async def read_project_file(self, path: str) -> dict[str, str]:
+        """Read a text file from the filesystem and return its content."""
+        file_path = Path(path).expanduser().resolve()
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        max_size = 500_000  # 500 KB limit for text files
+        try:
+            size = file_path.stat().st_size
+            if size > max_size:
+                raise HTTPException(status_code=413, detail=f"File too large ({size} bytes, limit {max_size})")
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            return {"path": str(file_path), "name": file_path.name, "content": content}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     async def execute_tool(self, payload: ToolExecuteRequest) -> ToolExecuteResponse:
         """Execute a tool call (currently only bash is supported)."""
         if payload.name != "bash":
@@ -1235,10 +1319,12 @@ class API:
             )
 
         max_output_chars = 50_000
+        cwd = Path(payload.cwd) if payload.cwd and Path(payload.cwd).is_dir() else Path.cwd()
 
         try:
             result = await anyio.run_process(
                 ["bash", "-c", command_str],
+                cwd=cwd,
                 check=False,
             )
             stdout = result.stdout.decode("utf-8", errors="replace")
