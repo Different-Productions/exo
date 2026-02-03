@@ -435,6 +435,10 @@ def apply_chat_template(
         ):
             continue
 
+        # Templates access content unconditionally — guard against None.
+        if message.content is None:
+            message.content = ""
+
         # Null values are not valid when applying templates in tokenizer
         dumped: dict[str, Any] = message.model_dump()
         msg_dict: dict[str, Any] = {k: v for k, v in dumped.items() if v is not None}  # pyright: ignore[reportAny]

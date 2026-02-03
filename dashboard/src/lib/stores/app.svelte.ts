@@ -1712,7 +1712,7 @@ class AppStore {
     includeToolContext: boolean,
   ): Array<Record<string, unknown>> {
     const systemContent = includeToolContext
-      ? "You are a helpful AI assistant with access to a bash tool. You can execute shell commands to help the user. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully."
+      ? "You are a helpful AI assistant with access to a bash tool. You can execute shell commands to help the user. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully. The system is macOS. Use macOS-compatible commands (e.g. `sed -i ''` not `sed -i`)."
       : "You are a helpful AI assistant. Respond directly and concisely. Do not show your reasoning or thought process. When files are shared with you, analyze them and respond helpfully.";
 
     const systemPrompt = {

@@ -14,6 +14,7 @@
     totalTokens,
     bashToolCallingEnabled,
     toggleBashToolCalling,
+    setBashToolCalling,
   } from "$lib/stores/app.svelte";
   import ChatAttachments from "./ChatAttachments.svelte";
   import ImageParamsPanel from "./ImageParamsPanel.svelte";
@@ -94,12 +95,27 @@
     return tasks.includes("ImageToImage");
   }
 
+  function modelSupportsToolCalling(modelId: string): boolean {
+    const tasks = modelTasks[modelId] || [];
+    return tasks.includes("ToolCalling");
+  }
+
   const isImageModel = $derived(() => {
     if (!currentModel) return false;
     return (
       modelSupportsTextToImage(currentModel) ||
       modelSupportsImageEditing(currentModel)
     );
+  });
+
+  const supportsTools = $derived(() => {
+    if (!currentModel) return false;
+    return modelSupportsToolCalling(currentModel);
+  });
+
+  // Auto-enable tool calling when model supports it, auto-disable when it doesn't
+  $effect(() => {
+    setBashToolCalling(supportsTools());
   });
 
   const isEditOnlyWithoutImage = $derived(
@@ -569,20 +585,18 @@
             </svg>
             IMAGE
           </button>
-          <button
-            type="button"
-            onclick={() => { filterTool = !filterTool; if (filterTool) filterImage = false; toggleBashToolCalling(); }}
-            class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase transition-all duration-200 cursor-pointer border {bashEnabled
-              ? 'bg-exo-yellow/15 text-exo-yellow border-exo-yellow/40 hover:bg-exo-yellow/25'
-              : 'bg-transparent text-exo-light-gray/50 border-exo-medium-gray/30 hover:text-exo-light-gray hover:border-exo-medium-gray/50'}"
-            title={bashEnabled ? "Disable bash tool calling" : "Enable bash tool calling"}
-          >
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-            TOOL
-          </button>
+          {#if supportsTools()}
+            <span
+              class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono tracking-wider uppercase border bg-exo-yellow/15 text-exo-yellow border-exo-yellow/40"
+              title="Tool calling enabled for this model"
+            >
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              TOOL
+            </span>
+          {/if}
         </div>
 
         <!-- Performance stats -->

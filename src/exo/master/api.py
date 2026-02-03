@@ -1222,13 +1222,12 @@ class API:
 
         try:
             parsed: dict[str, str] = json.loads(payload.arguments)  # pyright: ignore[reportAny]
-        except (json.JSONDecodeError, TypeError) as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid JSON in arguments: {exc}",
-            ) from exc
+            command_str = parsed.get("command", "")
+        except (json.JSONDecodeError, TypeError):
+            # The model may emit malformed JSON for the arguments.
+            # Fall back to treating the raw string as the command.
+            command_str = payload.arguments.strip()
 
-        command_str = parsed.get("command", "")
         if not command_str:
             raise HTTPException(
                 status_code=400,

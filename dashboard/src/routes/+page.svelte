@@ -2621,9 +2621,9 @@
                           {:else}
                             <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">IMG</span>
                           {/if}
-                          {#if !isImageModel && !isImageEditModel}
+                          {#if model.tasks && model.tasks.includes("ToolCalling")}
                             <span class="text-[9px] px-1 py-px rounded bg-exo-yellow/15 border border-exo-yellow/30 text-exo-yellow leading-none">TOOL</span>
-                          {:else}
+                          {:else if !isImageModel && !isImageEditModel}
                             <span class="text-[9px] px-1 py-px rounded bg-exo-medium-gray/20 border border-exo-medium-gray/30 text-exo-light-gray/30 leading-none">TOOL</span>
                           {/if}
                           <span

@@ -538,11 +538,21 @@ def parse_gpt_oss(
                 prefix = "functions."
                 if current_tool_name.startswith(prefix):
                     current_tool_name = current_tool_name[len(prefix) :]
+                raw_args = "".join(tool_arg_parts).strip()
+                # Validate arguments are well-formed JSON.  If the model
+                # emitted broken JSON (e.g. literal newlines inside a
+                # string value) re-encode via json.dumps so downstream
+                # consumers can always rely on json.loads succeeding.
+                try:
+                    json.loads(raw_args)
+                    validated_args = raw_args
+                except (json.JSONDecodeError, TypeError):
+                    validated_args = json.dumps({"command": raw_args})
                 yield ToolCallResponse(
                     tool_calls=[
                         ToolCallItem(
                             name=current_tool_name,
-                            arguments="".join(tool_arg_parts).strip(),
+                            arguments=validated_args,
                         )
                     ],
                     usage=response.usage,

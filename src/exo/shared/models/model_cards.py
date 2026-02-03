@@ -26,6 +26,7 @@ _card_cache: dict[str, "ModelCard"] = {}
 
 class ModelTask(str, Enum):
     TextGeneration = "TextGeneration"
+    ToolCalling = "ToolCalling"
     TextToImage = "TextToImage"
     ImageToImage = "ImageToImage"
 
@@ -87,7 +88,7 @@ class ModelCard(CamelCaseModel):
             n_layers=num_layers,
             hidden_size=config_data.hidden_size or 0,
             supports_tensor=config_data.supports_tensor,
-            tasks=[ModelTask.TextGeneration],
+            tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
         )
         _card_cache[model_id] = mc
         return mc
@@ -101,7 +102,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=7168,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "deepseek-v3.1-8bit": ModelCard(
         model_id=ModelId("mlx-community/DeepSeek-V3.1-8bit"),
@@ -109,7 +110,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=7168,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # kimi k2
     "kimi-k2-instruct-4bit": ModelCard(
@@ -118,7 +119,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=7168,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "kimi-k2-thinking": ModelCard(
         model_id=ModelId("mlx-community/Kimi-K2-Thinking"),
@@ -126,7 +127,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=7168,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "kimi-k2.5": ModelCard(
         model_id=ModelId("mlx-community/Kimi-K2.5"),
@@ -134,7 +135,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=7168,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # llama-3.1
     "llama-3.1-8b": ModelCard(
@@ -143,7 +144,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=32,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.1-8b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Meta-Llama-3.1-8B-Instruct-8bit"),
@@ -151,7 +152,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=32,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.1-8b-bf16": ModelCard(
         model_id=ModelId("mlx-community/Meta-Llama-3.1-8B-Instruct-bf16"),
@@ -159,7 +160,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=32,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.1-70b": ModelCard(
         model_id=ModelId("mlx-community/Meta-Llama-3.1-70B-Instruct-4bit"),
@@ -167,7 +168,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=80,
         hidden_size=8192,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # llama-3.2
     "llama-3.2-1b": ModelCard(
@@ -176,7 +177,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=16,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.2-3b": ModelCard(
         model_id=ModelId("mlx-community/Llama-3.2-3B-Instruct-4bit"),
@@ -184,7 +185,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=28,
         hidden_size=3072,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.2-3b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Llama-3.2-3B-Instruct-8bit"),
@@ -192,7 +193,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=28,
         hidden_size=3072,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # llama-3.3
     "llama-3.3-70b": ModelCard(
@@ -201,7 +202,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=80,
         hidden_size=8192,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.3-70b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Llama-3.3-70B-Instruct-8bit"),
@@ -209,7 +210,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=80,
         hidden_size=8192,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "llama-3.3-70b-fp16": ModelCard(
         model_id=ModelId("mlx-community/llama-3.3-70b-instruct-fp16"),
@@ -217,7 +218,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=80,
         hidden_size=8192,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # qwen3
     "qwen3-0.6b": ModelCard(
@@ -226,7 +227,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=28,
         hidden_size=1024,
         supports_tensor=False,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-0.6b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-0.6B-8bit"),
@@ -234,7 +235,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=28,
         hidden_size=1024,
         supports_tensor=False,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-30b": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-30B-A3B-4bit"),
@@ -242,7 +243,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-30b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-30B-A3B-8bit"),
@@ -250,7 +251,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-80b-a3B-4bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit"),
@@ -258,7 +259,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-80b-a3B-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Next-80B-A3B-Instruct-8bit"),
@@ -266,7 +267,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-80b-a3B-thinking-4bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Next-80B-A3B-Thinking-4bit"),
@@ -274,7 +275,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-80b-a3B-thinking-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Next-80B-A3B-Thinking-8bit"),
@@ -282,7 +283,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=48,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-235b-a22b-4bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-235B-A22B-Instruct-2507-4bit"),
@@ -290,7 +291,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=94,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-235b-a22b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-235B-A22B-Instruct-2507-8bit"),
@@ -298,7 +299,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=94,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-coder-480b-a35b-4bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Coder-480B-A35B-Instruct-4bit"),
@@ -306,7 +307,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=62,
         hidden_size=6144,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "qwen3-coder-480b-a35b-8bit": ModelCard(
         model_id=ModelId("mlx-community/Qwen3-Coder-480B-A35B-Instruct-8bit"),
@@ -314,9 +315,9 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=62,
         hidden_size=6144,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
-    # gpt-oss
+    # gpt-oss (no tool calling support — Harmony protocol does not surface tool definitions)
     "gpt-oss-120b-MXFP4-Q8": ModelCard(
         model_id=ModelId("mlx-community/gpt-oss-120b-MXFP4-Q8"),
         storage_size=Memory.from_kb(68_996_301),
@@ -341,7 +342,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=46,
         hidden_size=4096,
         supports_tensor=False,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.5-air-bf16": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.5-Air-bf16"),
@@ -349,7 +350,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=46,
         hidden_size=4096,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # glm 4.7
     "glm-4.7-4bit": ModelCard(
@@ -358,7 +359,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=91,
         hidden_size=5120,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.7-6bit": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.7-6bit"),
@@ -366,7 +367,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=91,
         hidden_size=5120,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.7-8bit-gs32": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.7-8bit-gs32"),
@@ -374,7 +375,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=91,
         hidden_size=5120,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # glm 4.7 flash
     "glm-4.7-flash-4bit": ModelCard(
@@ -383,7 +384,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=47,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.7-flash-5bit": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.7-Flash-5bit"),
@@ -391,7 +392,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=47,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.7-flash-6bit": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.7-Flash-6bit"),
@@ -399,7 +400,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=47,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "glm-4.7-flash-8bit": ModelCard(
         model_id=ModelId("mlx-community/GLM-4.7-Flash-8bit"),
@@ -407,7 +408,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=47,
         hidden_size=2048,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     # minimax-m2
     "minimax-m2.1-8bit": ModelCard(
@@ -416,7 +417,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=3072,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
     "minimax-m2.1-3bit": ModelCard(
         model_id=ModelId("mlx-community/MiniMax-M2.1-3bit"),
@@ -424,7 +425,7 @@ MODEL_CARDS: dict[str, ModelCard] = {
         n_layers=61,
         hidden_size=3072,
         supports_tensor=True,
-        tasks=[ModelTask.TextGeneration],
+        tasks=[ModelTask.TextGeneration, ModelTask.ToolCalling],
     ),
 }
 
