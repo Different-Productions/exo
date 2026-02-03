@@ -640,7 +640,12 @@
 <style>
   .downloads-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 640px) {
+    .downloads-grid {
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
   }
   @media (min-width: 1024px) {
     .downloads-grid {

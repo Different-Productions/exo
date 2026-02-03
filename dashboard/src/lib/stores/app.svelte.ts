@@ -456,6 +456,8 @@ class AppStore {
   debugMode = $state(false);
   topologyOnlyMode = $state(false);
   chatSidebarVisible = $state(true); // Shown by default
+  rightSidebarVisible = $state(true); // Shown by default on desktop
+  mobileOverlayOpen = $state<"left" | "right" | null>(null); // Which overlay is open on mobile
 
   // Image generation params
   imageGenerationParams = $state<ImageGenerationParams>({
@@ -1099,6 +1101,30 @@ class AppStore {
   toggleChatSidebarVisible() {
     this.chatSidebarVisible = !this.chatSidebarVisible;
     this.saveChatSidebarVisibleToStorage();
+  }
+
+  getRightSidebarVisible(): boolean {
+    return this.rightSidebarVisible;
+  }
+
+  setRightSidebarVisible(visible: boolean) {
+    this.rightSidebarVisible = visible;
+  }
+
+  toggleRightSidebarVisible() {
+    this.rightSidebarVisible = !this.rightSidebarVisible;
+  }
+
+  getMobileOverlayOpen(): "left" | "right" | null {
+    return this.mobileOverlayOpen;
+  }
+
+  setMobileOverlayOpen(overlay: "left" | "right" | null) {
+    this.mobileOverlayOpen = overlay;
+  }
+
+  closeMobileOverlay() {
+    this.mobileOverlayOpen = null;
   }
 
   startPolling() {
@@ -2647,6 +2673,15 @@ export const toggleChatSidebarVisible = () =>
   appStore.toggleChatSidebarVisible();
 export const setChatSidebarVisible = (visible: boolean) =>
   appStore.setChatSidebarVisible(visible);
+export const rightSidebarVisible = () => appStore.getRightSidebarVisible();
+export const toggleRightSidebarVisible = () =>
+  appStore.toggleRightSidebarVisible();
+export const setRightSidebarVisible = (visible: boolean) =>
+  appStore.setRightSidebarVisible(visible);
+export const mobileOverlayOpen = () => appStore.getMobileOverlayOpen();
+export const setMobileOverlayOpen = (overlay: "left" | "right" | null) =>
+  appStore.setMobileOverlayOpen(overlay);
+export const closeMobileOverlay = () => appStore.closeMobileOverlay();
 export const refreshState = () => appStore.fetchState();
 
 // Thunderbolt bridge status
